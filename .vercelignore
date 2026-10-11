@@ -1,7 +1,9 @@
-# Vercel only serves the game page; the relay runs on Render.
-node_modules
-server.js
-package.json
-package-lock.json
-tools
-
+# Vercel serves only the static game (see vercel.json); the relay (server.js) runs on Render.
+# Leading slashes anchor each rule to the project root so nothing inside assets/ is caught.
+/node_modules
+/server.js
+/package.json
+/package-lock.json
+/tools
+/sprites
+/public

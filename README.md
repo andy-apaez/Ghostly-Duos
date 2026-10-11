@@ -90,10 +90,10 @@ window.GAME_CONFIG = {
 **3. Deploy the game on Vercel**
 
 1. In Vercel, **Add New → Project** and import the same repo.
-2. Framework preset: **Other**. Leave the build command empty and the output directory as the project root.
-3. Deploy, then share the `https://….vercel.app` link. That's the game link players use.
+2. Deploy. `vercel.json` already sets everything: no framework, no install step, and a build step that copies `index.html`, `config.js` and `assets/` into `public/`, which Vercel serves. It overrides whatever the dashboard detected, so you don't need to change project settings.
+3. Share the `https://….vercel.app` link. That's the game link players use.
 
-`.vercelignore` keeps the relay code and the source art out of the Vercel deployment; only `index.html`, `config.js` and `assets/` are published.
+`.vercelignore` keeps the relay code, the build tools and the source art out of the upload. Without `vercel.json`, Vercel sees `server.js` and `package.json` and tries to run the relay as a serverless function. That can't hold WebSockets and doesn't include `assets/`, which shows up as "missing assets/sprites.js".
 
 **How the game picks the relay:** a `?server=wss://…` in the link wins. Otherwise it uses `config.js`, except when the page is served from `localhost` or your local network, where it uses that same host so `npm start` keeps working. With `config.js` left empty, it uses whatever host served the page, so the Render URL also works on its own as a game link.
 
