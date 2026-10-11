@@ -18,7 +18,7 @@ const server = http.createServer((req, res) => {
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' });
       res.end(data);
     });
-  } else if (/^\/assets\/[\w.-]+\.(js|png)$/.test(url)) {
+  } else if (url === '/config.js' || /^\/assets\/[\w.-]+\.(js|png)$/.test(url)) {
     fs.readFile(path.join(__dirname, url), (err, data) => {
       if (err) { res.writeHead(404); return res.end('Not found'); }
       res.writeHead(200, { 'Content-Type': url.endsWith('.js') ? 'text/javascript' : 'image/png', 'Cache-Control': 'no-cache' });

@@ -15,6 +15,7 @@
 
 <canvas id="c" width="480" height="272" tabindex="0" aria-label="Twin Spirits, a two player ghost platformer"></canvas>
 
+<script src="config.js"></script>
 <script src="assets/sprites.js"></script>
 <script>
 'use strict';
@@ -334,10 +335,21 @@ const net={mode:'local',role:'',ws:null,sub:'',code:'',typed:'',err:'',lost:fals
 let menuSel=0, MENU_RECTS=[];
 const r1=v=>Math.round(v*10)/10;
 function myIndex(){ return net.mode==='guest'?1:0; }
+// Where the relay (server.js) is: ?server= in the link, else config.js, else the host serving this page.
+// Pages served from this machine or the local network always use their own host, so `npm start` keeps working.
 function serverURL(){
   try{ const q=new URLSearchParams(location.search).get('server'); if(q) return q; }catch(e){}
-  if(location.protocol==='http:'||location.protocol==='https:') return (location.protocol==='https:'?'wss://':'ws://')+location.host;
+  const cfg=String((window.GAME_CONFIG&&window.GAME_CONFIG.server)||'').trim().replace(/\/+$/,'');
+  const web=location.protocol==='http:'||location.protocol==='https:';
+  const local=/^(localhost|127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)|\.local$/.test(location.hostname);
+  if(cfg&&!(web&&local)) return cfg.replace(/^http/,'ws');
+  if(web) return (location.protocol==='https:'?'wss://':'ws://')+location.host;
   return 'ws://localhost:8080';
+}
+// Free hosts put the relay to sleep when idle; a plain HTTP request starts waking it before anyone clicks Host.
+function wakeServer(){
+  if(typeof fetch!=='function') return;
+  try{ fetch(serverURL().replace(/^ws/,'http')+'/health',{mode:'no-cors',cache:'no-store'}).catch(()=>{}); }catch(e){}
 }
 function rec(type,args){
   if(net.mode!=='host'||net.events.length>300) return;
@@ -353,21 +365,28 @@ function playEvent([t,...a]){
 function send(o){ if(net.ws&&net.ws.readyState===1) net.ws.send(JSON.stringify(o)); }
 function mergeInputs(a,b){ const o={}; for(const k in a) o[k]=a[k]||b[k]; return o; }
 
+const WAKE_MS=70000;   // keep retrying this long while a sleeping relay boots
 function netConnect(onOpen){
   netClose();
-  let ws;
-  try{ ws=new WebSocket(serverURL()); }catch(e){ netFail(); return; }
+  if(!net.connStart) net.connStart=performance.now();
+  let ws, opened=false;
+  try{ ws=new WebSocket(serverURL()); }catch(e){ net.connStart=0; netFail(); return; }
   net.ws=ws;
-  ws.onopen=onOpen;
+  ws.onopen=()=>{ opened=true; net.connStart=0; onOpen(); };
   ws.onmessage=e=>{ let m; try{ m=JSON.parse(e.data); }catch(err){ return; } netMessage(m); };
+  ws.onerror=()=>{};   // a failed connection is handled in onclose
   ws.onclose=()=>{
     if(net.ws!==ws) return; net.ws=null;
-    if(state==='lobby') netFail();
+    if(state==='lobby'){
+      if(!opened&&performance.now()-net.connStart<WAKE_MS){   // relay is probably still waking up: try again
+        net.retry=setTimeout(()=>{ if(state==='lobby'&&net.sub==='connecting') netConnect(onOpen); },2000); return; }
+      net.connStart=0; netFail();
+    }
     else if(net.mode!=='local'){ net.lost=true; net.lostMsg='CONNECTION LOST'; }
   };
 }
 function netFail(){ net.err='CANNOT REACH SERVER AT '+serverURL().toUpperCase(); net.sub=net.role==='guest'?'join':'error'; }
-function netClose(){ if(net.ws){ const ws=net.ws; net.ws=null; ws.onclose=null; try{ ws.close(); }catch(e){} } }
+function netClose(){ clearTimeout(net.retry); if(net.ws){ const ws=net.ws; net.ws=null; ws.onclose=null; try{ ws.close(); }catch(e){} } }
 function netMessage(m){
   switch(m.t){
     case 'room': net.code=m.code; net.sub='hosting'; break;
@@ -388,6 +407,7 @@ function backToTitle(){
 function chooseMenu(i){
   if(i===0){ net.mode='local'; startGame(); return; }
   state='lobby'; net.err=''; net.code=''; net.typed='';
+  wakeServer(); net.connStart=0;
   if(i===1){ net.role='host'; net.sub='connecting'; netConnect(()=>send({t:'host'})); }
   else { net.role='guest'; net.sub='join'; }
 }
@@ -404,7 +424,7 @@ function lobbyStep(){
   if(pressed.Escape){ backToTitle(); return; }
   const enter=pressed.Enter||pressed.NumpadEnter;
   if(net.sub==='join'&&enter&&net.typed.length===4){
-    const code=net.typed; net.err=''; net.sub='connecting'; netConnect(()=>send({t:'join',code}));
+    const code=net.typed; net.err=''; net.sub='connecting'; net.connStart=0; netConnect(()=>send({t:'join',code}));
   } else if(net.sub==='error'&&enter) chooseMenu(1);
   updateParticles();
 }
@@ -526,7 +546,10 @@ function drawLobby(){
   drawBackground(gtime*14,0); overlay(0.55);
   text('ONLINE CO-OP',VW/2,28,'#ffffff',3,'center');
   const dots='.'.repeat(1+Math.floor(gtime*2)%3);
-  if(net.sub==='connecting') text('CONNECTING'+dots,VW/2,104,'#e2d6ff',2,'center');
+  if(net.sub==='connecting'){ text('CONNECTING'+dots,VW/2,104,'#e2d6ff',2,'center');
+    if(net.connStart&&performance.now()-net.connStart>3000){
+      text('WAKING THE SERVER. THIS CAN TAKE UP TO A MINUTE.',VW/2,132,'#8ff7e8',1,'center');
+      text(Math.floor((performance.now()-net.connStart)/1000)+'S',VW/2,144,'#6d8a84',1,'center'); } }
   if(net.sub==='hosting'){
     text('ROOM CODE',VW/2,70,'#bdb4e0',1,'center');
     text(net.code,VW/2,82,'#ffffff',6,'center');
@@ -1538,6 +1561,7 @@ function frame(now){
 }
 function boot(){
 resetGame();
+wakeServer();
 if(location.hash==='#worldmap'){
   const big=document.createElement('canvas'); big.width=LW*TS; big.height=LH*TS; const bg=big.getContext('2d');
   for(let y=0;y<LH*TS;y+=VH) for(let x=0;x<LW*TS;x+=VW){ cam.x=x; cam.y=y; drawWorld(); bg.drawImage(cvs,x,y); }

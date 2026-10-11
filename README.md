@@ -66,16 +66,40 @@ The script cuts every frame from the showcase sheets at native size (they're dra
 
 Run `npm start`, find your computer's local IP (macOS: `ipconfig getifaddr en0`), and have your partner open `http://<that-ip>:8080`.
 
-## Deploy it
+## Deploy it (game on Vercel, relay on Render)
 
-Any host that runs Node and supports WebSockets will work. On Render:
+Vercel can host the game page but can't run the WebSocket relay, so the relay (`server.js`) goes on Render and the page points at it.
+
+**1. Deploy the relay on Render**
 
 1. Push this folder to a GitHub repo.
 2. In Render, create a **New → Web Service** from the repo.
-3. Build command: `npm install`. Start command: `npm start`.
-4. Share the `https://….onrender.com` URL with your partner.
+3. Build command: `npm install`. Start command: `npm start`. The free instance type is fine.
+4. When it's live, copy its address, e.g. `https://twin-spirits.onrender.com`. Opening `/health` on it should show `ok`.
 
-Render's free tier sleeps when idle, so the first visit can take about 30 seconds to load. Railway and Fly.io work the same way; the server reads the port from the `PORT` environment variable.
+**2. Point the game at the relay**
+
+In `config.js`, set the relay address with `wss://` in place of `https://`, then commit and push:
+
+```js
+window.GAME_CONFIG = {
+  server: 'wss://twin-spirits.onrender.com'
+};
+```
+
+**3. Deploy the game on Vercel**
+
+1. In Vercel, **Add New → Project** and import the same repo.
+2. Framework preset: **Other**. Leave the build command empty and the output directory as the project root.
+3. Deploy, then share the `https://….vercel.app` link. That's the game link players use.
+
+`.vercelignore` keeps the relay code and the source art out of the Vercel deployment; only `index.html`, `config.js` and `assets/` are published.
+
+**How the game picks the relay:** a `?server=wss://…` in the link wins. Otherwise it uses `config.js`, except when the page is served from `localhost` or your local network, where it uses that same host so `npm start` keeps working. With `config.js` left empty, it uses whatever host served the page, so the Render URL also works on its own as a game link.
+
+**Free-tier sleep:** Render's free relay sleeps after about 15 idle minutes and takes up to a minute to wake. The game starts waking it as soon as the page loads. If someone picks Host or Join while it's still waking, the lobby shows "waking the server" and keeps retrying for about 70 seconds. To avoid the wait, use a paid Render instance, which stays on.
+
+Railway and Fly.io work the same way as Render; the relay reads its port from the `PORT` environment variable.
 
 ## Known limits
 

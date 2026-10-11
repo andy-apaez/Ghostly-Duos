@@ -1,0 +1,7 @@
+# Vercel only serves the game page; the relay runs on Render.
+node_modules
+server.js
+package.json
+package-lock.json
+tools
+sprites
